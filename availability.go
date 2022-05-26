@@ -11,8 +11,9 @@ import (
 type State string
 
 var (
-	StateAvailable State = "Available"
-	StateReserved  State = "Reserved"
+	StateAvailable               State = "Available"
+	StateReserved                State = "Reserved"
+	StateNotReservableManagement State = "Not Reservable Management"
 )
 
 type Availability struct {
