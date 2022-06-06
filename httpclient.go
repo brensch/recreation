@@ -27,16 +27,25 @@ func (e ErrCloudFlare) Error() string {
 	return fmt.Sprintf("Cloudflare Error %d: %s", e.Status, e.Contents)
 }
 
-// Obfuscator is what will set all the headers required to avoid detection by cloudflare
+// Obfuscator is what will set all the headers required to avoid detection by cloudflare.
+// It also rate limits you to ensure you don't go over the cloudflare limit.
+// TODO: make the rate limiting dynamic, ie increase limiting if it's no good
 type Obfuscator struct {
-	client *http.Client
-	ctx    context.Context
+	client      *http.Client
+	ctx         context.Context
+	rateLimiter chan struct{}
 }
 
 // TODO: do this better. Should use a real library to make user agent headers
 func (c *Obfuscator) Do(req *http.Request) (*http.Response, error) {
+	c.rateLimiter <- struct{}{}
 	req.Header.Set("User-Agent", UserAgent)
-	return c.client.Do(req)
+	timer := time.NewTimer(1 * time.Second)
+	res, err := c.client.Do(req)
+	// wait  at least one second between each call
+	<-timer.C
+	<-c.rateLimiter
+	return res, err
 }
 
 // set sensible defaults for http client
@@ -53,7 +62,8 @@ func initObfuscator(ctx context.Context) *Obfuscator {
 				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
-		ctx: ctx,
+		rateLimiter: make(chan struct{}),
+		ctx:         ctx,
 	}
 
 }
