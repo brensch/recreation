@@ -40,7 +40,7 @@ func (c *Obfuscator) Do(req *http.Request) (*http.Response, error) {
 }
 
 // set sensible defaults for http client
-func InitObfuscator(ctx context.Context) *Obfuscator {
+func initObfuscator(ctx context.Context) *Obfuscator {
 	return &Obfuscator{
 		client: &http.Client{
 			Transport: &http.Transport{

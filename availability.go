@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type State string
@@ -44,13 +46,27 @@ type Campsite struct {
 	Quantities struct{} `json:"quantities"`
 }
 
-// GetAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
-func GetAvailability(ctx context.Context, client HTTPClient, campgroundID string, targetTime time.Time) (Availability, error) {
+func (s *Server) GetAvailability(ctx context.Context, campgroundID string, targetTime time.Time) (Availability, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
+	return getAvailability(ctx, s.log, s.client, campgroundID, targetTime)
+}
+
+// getAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
+func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, campgroundID string, targetTime time.Time) (Availability, error) {
+
+	start := time.Now()
+	log = log.With(
+		zap.String("campground_id", campgroundID),
+		zap.Time("target_time", targetTime),
+	)
+	log.Info("getting availability")
 	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", RecreationGovURI, campgroundID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
+		log.Error("couldn't create request", zap.Error(err))
 		return Availability{}, err
 	}
 
@@ -64,24 +80,33 @@ func GetAvailability(ctx context.Context, client HTTPClient, campgroundID string
 
 	res, err := client.Do(req)
 	if err != nil {
+		log.Error("couldn't do request", zap.Error(err))
 		return Availability{}, err
 	}
 	defer res.Body.Close()
 
 	resContents, err := ioutil.ReadAll(res.Body)
 	if err != nil {
+		log.Error("couldn't read response", zap.Error(err))
 		return Availability{}, err
 	}
 
 	if res.StatusCode != http.StatusOK {
+		log.Error("got bad errorcode",
+			zap.Int("status_code", res.StatusCode),
+			zap.String("body", string(resContents)),
+		)
 		return Availability{}, fmt.Errorf(string(resContents))
 	}
 
 	var availability Availability
 	err = json.Unmarshal(resContents, &availability)
 	if err != nil {
+		log.Error("couldn't unmarshal", zap.Error(err))
 		return Availability{}, err
 	}
+
+	log.Debug("successfully completed availability check", zap.Duration("duration", time.Since(start)))
 
 	return availability, nil
 

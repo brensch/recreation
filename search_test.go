@@ -1,18 +1,19 @@
-package recreation_test
+package recreation
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	"github.com/brensch/recreation"
+	"go.uber.org/zap"
 )
 
 func TestDoSearchGeo(t *testing.T) {
 	ctx := context.Background()
-	client := recreation.InitObfuscator(ctx)
+	log, _ := zap.NewDevelopment()
+	client := initObfuscator(ctx)
 
-	res, err := recreation.DoSearchGeo(ctx, client, 37.3859, -122.0882)
+	res, err := searchGeo(ctx, log, client, 37.3859, -122.0882)
 	if err != nil {
 		t.Log(err)
 		t.Fail()

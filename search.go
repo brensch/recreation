@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // I found two ways to search:
@@ -117,12 +119,25 @@ type Fees struct {
 	Weekend   int `json:"weekend"`
 }
 
-func DoSearchGeo(ctx context.Context, client HTTPClient, lat, lon float64) (SearchResults, error) {
+func (s *Server) SearchGeo(ctx context.Context, lat, lon float64) (SearchResults, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
+	return searchGeo(ctx, s.log, s.client, lat, lon)
+}
+
+func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon float64) (SearchResults, error) {
+
+	start := time.Now()
+	log = log.With(
+		zap.Float64("lat", lat),
+		zap.Float64("lon", lon),
+	)
 	endpoint := fmt.Sprintf("%s/api/search/geo", RecreationGovURI)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
+		log.Error("couldn't create request", zap.Error(err))
 		return SearchResults{}, err
 	}
 
@@ -144,6 +159,7 @@ func DoSearchGeo(ctx context.Context, client HTTPClient, lat, lon float64) (Sear
 
 	res, err := client.Do(req)
 	if err != nil {
+		log.Error("couldn't do request", zap.Error(err))
 		return SearchResults{}, err
 	}
 	defer res.Body.Close()
@@ -151,18 +167,26 @@ func DoSearchGeo(ctx context.Context, client HTTPClient, lat, lon float64) (Sear
 	// doing a readall since cloudflare dumps xml on you
 	resContents, err := ioutil.ReadAll(res.Body)
 	if err != nil {
+		log.Error("couldn't read response", zap.Error(err))
 		return SearchResults{}, err
 	}
 
 	if res.StatusCode != http.StatusOK {
+		log.Error("got bad errorcode",
+			zap.Int("status_code", res.StatusCode),
+			zap.String("body", string(resContents)),
+		)
 		return SearchResults{}, fmt.Errorf(string(resContents))
 	}
 
 	var results SearchResults
 	err = json.Unmarshal(resContents, &results)
 	if err != nil {
+		log.Error("couldn't unmarshal", zap.Error(err))
 		return SearchResults{}, err
 	}
+
+	log.Debug("successfully completed campground search", zap.Duration("duration", time.Since(start)))
 
 	return results, nil
 
