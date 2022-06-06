@@ -62,7 +62,7 @@ func initObfuscator(ctx context.Context) *Obfuscator {
 				ExpectContinueTimeout: 1 * time.Second,
 			},
 		},
-		rateLimiter: make(chan struct{}),
+		rateLimiter: make(chan struct{}, 1),
 		ctx:         ctx,
 	}
 
