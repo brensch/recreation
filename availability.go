@@ -44,6 +44,7 @@ type Campsite struct {
 	Quantities struct{} `json:"quantities"`
 }
 
+// GetAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
 func GetAvailability(ctx context.Context, client HTTPClient, campgroundID string, targetTime time.Time) (Availability, error) {
 
 	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", RecreationGovURI, campgroundID)

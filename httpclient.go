@@ -2,13 +2,29 @@ package recreation
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
 )
 
+const (
+	RecreationGovURI = "https://www.recreation.gov"
+
+	UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+)
+
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
+}
+
+type ErrCloudFlare struct {
+	Status   int
+	Contents []byte
+}
+
+func (e ErrCloudFlare) Error() string {
+	return fmt.Sprintf("Cloudflare Error %d: %s", e.Status, e.Contents)
 }
 
 // Obfuscator is what will set all the headers required to avoid detection by cloudflare
