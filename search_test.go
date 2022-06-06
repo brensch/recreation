@@ -11,7 +11,7 @@ import (
 func TestDoSearchGeo(t *testing.T) {
 	ctx := context.Background()
 	log, _ := zap.NewDevelopment()
-	client := initObfuscator(ctx)
+	client := initObfuscator(ctx, 0)
 
 	res, err := searchGeo(ctx, log, client, 37.3859, -122.0882)
 	if err != nil {

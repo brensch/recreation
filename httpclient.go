@@ -34,13 +34,14 @@ type Obfuscator struct {
 	client      *http.Client
 	ctx         context.Context
 	rateLimiter chan struct{}
+	apiPause    time.Duration
 }
 
 // TODO: do this better. Should use a real library to make user agent headers
 func (c *Obfuscator) Do(req *http.Request) (*http.Response, error) {
 	c.rateLimiter <- struct{}{}
 	req.Header.Set("User-Agent", UserAgent)
-	timer := time.NewTimer(1 * time.Second)
+	timer := time.NewTimer(c.apiPause)
 	res, err := c.client.Do(req)
 	// wait  at least one second between each call
 	<-timer.C
@@ -49,7 +50,7 @@ func (c *Obfuscator) Do(req *http.Request) (*http.Response, error) {
 }
 
 // set sensible defaults for http client
-func initObfuscator(ctx context.Context) *Obfuscator {
+func initObfuscator(ctx context.Context, apiPause time.Duration) *Obfuscator {
 	return &Obfuscator{
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -63,6 +64,7 @@ func initObfuscator(ctx context.Context) *Obfuscator {
 			},
 		},
 		rateLimiter: make(chan struct{}, 1),
+		apiPause:    apiPause,
 		ctx:         ctx,
 	}
 
