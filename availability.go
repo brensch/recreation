@@ -46,11 +46,11 @@ type Campsite struct {
 	Quantities struct{} `json:"quantities"`
 }
 
-func (s *Server) GetAvailability(ctx context.Context, campgroundID string, targetTime time.Time) (Availability, error) {
+func (s *Server) GetAvailability(ctx context.Context, log *zap.Logger, campgroundID string, targetTime time.Time) (Availability, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return getAvailability(ctx, s.log, s.client, campgroundID, targetTime)
+	return getAvailability(ctx, log, s.client, campgroundID, targetTime)
 }
 
 // getAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
@@ -92,7 +92,7 @@ func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, ca
 	}
 
 	if res.StatusCode != http.StatusOK {
-		log.Error("got bad errorcode",
+		log.Error("got bad statuscode getting availability",
 			zap.Int("status_code", res.StatusCode),
 			zap.String("body", string(resContents)),
 		)

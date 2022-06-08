@@ -119,11 +119,11 @@ type Fees struct {
 	Weekend   int `json:"weekend"`
 }
 
-func (s *Server) SearchGeo(ctx context.Context, lat, lon float64) (SearchResults, error) {
+func (s *Server) SearchGeo(ctx context.Context, log *zap.Logger, lat, lon float64) (SearchResults, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return searchGeo(ctx, s.log, s.client, lat, lon)
+	return searchGeo(ctx, log, s.client, lat, lon)
 }
 
 func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon float64) (SearchResults, error) {
@@ -172,7 +172,7 @@ func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon
 	}
 
 	if res.StatusCode != http.StatusOK {
-		log.Error("got bad errorcode",
+		log.Error("got bad statuscode searching geo",
 			zap.Int("status_code", res.StatusCode),
 			zap.String("body", string(resContents)),
 		)
