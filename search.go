@@ -133,6 +133,7 @@ func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon
 		zap.Float64("lat", lat),
 		zap.Float64("lon", lon),
 	)
+	log.Debug("doing search using api")
 	endpoint := fmt.Sprintf("%s/api/search/geo", RecreationGovURI)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -186,7 +187,7 @@ func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon
 		return SearchResults{}, err
 	}
 
-	log.Debug("successfully completed campground search", zap.Duration("duration", time.Since(start)))
+	log.Debug("completed search using api", zap.Duration("duration", time.Since(start)))
 
 	return results, nil
 

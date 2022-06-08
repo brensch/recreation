@@ -61,7 +61,7 @@ func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, ca
 		zap.String("campground_id", campgroundID),
 		zap.Time("target_time", targetTime),
 	)
-	log.Info("getting availability")
+	log.Debug("getting availability from api")
 	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", RecreationGovURI, campgroundID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -106,7 +106,7 @@ func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, ca
 		return Availability{}, err
 	}
 
-	log.Debug("successfully completed availability check", zap.Duration("duration", time.Since(start)))
+	log.Debug("completed getting availability from api", zap.Duration("duration", time.Since(start)))
 
 	return availability, nil
 
