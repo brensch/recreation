@@ -119,14 +119,7 @@ type Fees struct {
 	Weekend   int `json:"weekend"`
 }
 
-func (s *Server) SearchGeo(ctx context.Context, log *zap.Logger, lat, lon float64) (SearchResults, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	return searchGeo(ctx, log, s.client, lat, lon)
-}
-
-func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon float64) (SearchResults, error) {
+func SearchGeo(ctx context.Context, log *zap.Logger, client Obfuscator, lat, lon float64) (SearchResults, error) {
 
 	start := time.Now()
 	log = log.With(
@@ -158,7 +151,7 @@ func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon
 
 	req.URL.RawQuery = v.Encode()
 
-	res, err := client.Do(req)
+	res, err := client.DoSneakily(req)
 	if err != nil {
 		log.Error("couldn't do request", zap.Error(err))
 		return SearchResults{}, err
@@ -173,10 +166,8 @@ func searchGeo(ctx context.Context, log *zap.Logger, client HTTPClient, lat, lon
 	}
 
 	if res.StatusCode != http.StatusOK {
-		log.Error("got bad statuscode searching geo",
-			zap.Int("status_code", res.StatusCode),
-			zap.String("body", string(resContents)),
-		)
+		log.Error("got bad statuscode searching geo", zap.Int("status_code", res.StatusCode))
+		log.Debug("body of bad request", zap.String("body", string(resContents)))
 		return SearchResults{}, fmt.Errorf(string(resContents))
 	}
 

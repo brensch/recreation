@@ -46,15 +46,8 @@ type Campsite struct {
 	Quantities struct{} `json:"quantities"`
 }
 
-func (s *Server) GetAvailability(ctx context.Context, log *zap.Logger, campgroundID string, targetTime time.Time) (Availability, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	return getAvailability(ctx, log, s.client, campgroundID, targetTime)
-}
-
-// getAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
-func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, campgroundID string, targetTime time.Time) (Availability, error) {
+// GetAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
+func GetAvailability(ctx context.Context, log *zap.Logger, client Obfuscator, campgroundID string, targetTime time.Time) (Availability, error) {
 
 	start := time.Now()
 	log = log.With(
@@ -78,7 +71,7 @@ func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, ca
 	v.Add("start_date", monthStart.Format("2006-01-02T15:04:05.000Z"))
 	req.URL.RawQuery = v.Encode()
 
-	res, err := client.Do(req)
+	res, err := client.DoSneakily(req)
 	if err != nil {
 		log.Error("couldn't do request", zap.Error(err))
 		return Availability{}, err
@@ -92,10 +85,8 @@ func getAvailability(ctx context.Context, log *zap.Logger, client HTTPClient, ca
 	}
 
 	if res.StatusCode != http.StatusOK {
-		log.Error("got bad statuscode getting availability",
-			zap.Int("status_code", res.StatusCode),
-			zap.String("body", string(resContents)),
-		)
+		log.Error("got bad statuscode getting availability", zap.Int("status_code", res.StatusCode))
+		log.Debug("body of bad request", zap.String("body", string(resContents)))
 		return Availability{}, fmt.Errorf(string(resContents))
 	}
 

@@ -11,9 +11,9 @@ import (
 func TestDoSearchGeo(t *testing.T) {
 	ctx := context.Background()
 	log, _ := zap.NewDevelopment()
-	client := initObfuscator(ctx, 0)
+	client := InitAgentRandomiser(ctx)
 
-	res, err := searchGeo(ctx, log, client, 37.3859, -122.0882)
+	res, err := SearchGeo(ctx, log, client, 37.3859, -122.0882)
 	if err != nil {
 		t.Log(err)
 		t.Fail()
