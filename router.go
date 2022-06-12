@@ -1,78 +1,58 @@
-package proxy
+package recreation
 
 import (
-	"context"
-	"encoding/json"
+	"fmt"
 	"net/http"
-	"time"
-
-	"github.com/brensch/recreation"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
-// using globals since i'm using cloud functions and can't pass things like i would regular handler funcs
-var (
-	o   recreation.Obfuscator
-	log *zap.Logger
-)
-
-func init() {
-	o = recreation.InitAgentRandomiser(context.Background())
-	logConfig := zap.NewProductionConfig()
-	logConfig.Level.SetLevel(zap.DebugLevel)
-	// this ensures google logs pick things up properly
-	logConfig.EncoderConfig.MessageKey = "message"
-	logConfig.EncoderConfig.LevelKey = "severity"
-	logConfig.EncoderConfig.TimeKey = "time"
-	// logConfig.Encoding = "console"
-
-	// init logger
-	var err error
-	log, err = logConfig.Build()
-	if err != nil {
-		// this indicates a bug or some way that zap can fail i'm not aware of
-		panic(err)
-	}
-}
-
-type GetAvailabilityReq struct {
-	CampgroundID string `json:"campground_id,omitempty"`
-}
-
-// CloudFunctionGetAvailability is intended to be run as a cloud function in GCP.
-// I am spreading these across all the regions of GCP so that they will all have different IP addresses.
-// Cloud functions are extremely cheap so the theory is that this will actually lead to less resource usage.
-func CloudFunctionGetAvailability(w http.ResponseWriter, r *http.Request) {
-	uuid := uuid.New().String()
-	log = log.With(zap.String("request_id", uuid))
-
-	var req GetAvailabilityReq
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		log.Error("failed to decode request", zap.Error(err))
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	avail, err := recreation.GetAvailability(context.Background(), log, o, req.CampgroundID, time.Now())
-	if err != nil {
-		log.Error("failed to get availability", zap.Error(err))
-		w.WriteHeader(http.StatusTeapot)
-		return
-	}
-
-	w.Header().Add("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(avail)
-	if err != nil {
-		log.Error("failed to encode avail into response", zap.Error(err))
-		w.WriteHeader(http.StatusTeapot)
-		return
-	}
+func Route(w http.ResponseWriter, r *http.Request) {
 
 }
+
+func ConstructURL(proxy string) string {
+	// TODO: make this more granular
+	return fmt.Sprintf("https://%s-campr-app.cloudfunctions.net/HandleGetAvailability", proxy)
+}
+
+// from https://cloud.google.com/functions/docs/locations
+
+// Tier 1 pricing
+// Cloud Functions is available in the following regions with Tier 1 pricing:
+
+// us-west1 (Oregon) leaf icon Low CO2
+// us-central1 (Iowa) leaf icon Low CO2
+// us-east1 (South Carolina)
+// us-east4 (Northern Virginia)
+// europe-west1 (Belgium) leaf icon Low CO2
+// europe-west2 (London)
+// asia-east1 (Taiwan)
+// asia-east2 (Hong Kong)
+// asia-northeast1 (Tokyo)
+// asia-northeast2 (Osaka)
+// Tier 2 pricing
+// Cloud Functions is available in the following region with Tier 2 pricing:
+
+// us-west2 (Los Angeles)
+// us-west3 (Salt Lake City)
+// us-west4 (Las Vegas)
+// northamerica-northeast1 (Montreal) leaf icon Low CO2
+// southamerica-east1 (Sao Paulo) leaf icon Low CO2
+// europe-west3 (Frankfurt)
+// europe-west6 (Zurich) leaf icon Low CO2
+// europe-central2 (Warsaw)
+// australia-southeast1 (Sydney)
+// asia-south1 (Mumbai)
+// asia-southeast1 (Singapore)
+// asia-southeast2 (Jakarta)
+// asia-northeast3 (Seoul)
+
+// url: https://us-east1-campr-app.cloudfunctions.net/CloudFunctionGetAvailability
 
 var (
+	activeProxies = []string{
+		"us-east1",
+		"us-west1",
+	}
 	sites = []string{
 		"273757",
 		"10172170",

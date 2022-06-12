@@ -1,4 +1,4 @@
-package recreation
+package api
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 func TestDoSearchGeo(t *testing.T) {
 	ctx := context.Background()
 	log, _ := zap.NewDevelopment()
-	client := InitAgentRandomiser(ctx)
+	// o := InitAgentRandomiser(ctx)
 
-	res, err := SearchGeo(ctx, log, client, 37.3859, -122.0882)
+	res, err := SearchGeo(ctx, log, "http://recreation.gov", 37.3859, -122.0882)
 	if err != nil {
 		t.Log(err)
 		t.Fail()

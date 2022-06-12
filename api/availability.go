@@ -1,4 +1,4 @@
-package recreation
+package api
 
 import (
 	"context"
@@ -47,7 +47,7 @@ type Campsite struct {
 }
 
 // GetAvailability ensures that the targettime is snapped to the start of the month, then queries the API for all availabilities at that ground
-func GetAvailability(ctx context.Context, log *zap.Logger, client Obfuscator, campgroundID string, targetTime time.Time) (Availability, error) {
+func GetAvailability(ctx context.Context, log *zap.Logger, baseURI string, campgroundID string, targetTime time.Time) (Availability, error) {
 
 	start := time.Now()
 	log = log.With(
@@ -55,7 +55,7 @@ func GetAvailability(ctx context.Context, log *zap.Logger, client Obfuscator, ca
 		zap.Time("target_time", targetTime),
 	)
 	log.Debug("getting availability from api")
-	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", RecreationGovURI, campgroundID)
+	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", baseURI, campgroundID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -71,7 +71,7 @@ func GetAvailability(ctx context.Context, log *zap.Logger, client Obfuscator, ca
 	v.Add("start_date", monthStart.Format("2006-01-02T15:04:05.000Z"))
 	req.URL.RawQuery = v.Encode()
 
-	res, err := client.DoSneakily(req)
+	res, err := client.Do(req)
 	if err != nil {
 		log.Error("couldn't do request", zap.Error(err))
 		return Availability{}, err

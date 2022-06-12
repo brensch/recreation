@@ -1,4 +1,4 @@
-package recreation
+package api
 
 import (
 	"context"
@@ -119,7 +119,7 @@ type Fees struct {
 	Weekend   int `json:"weekend"`
 }
 
-func SearchGeo(ctx context.Context, log *zap.Logger, client Obfuscator, lat, lon float64) (SearchResults, error) {
+func SearchGeo(ctx context.Context, log *zap.Logger, baseURI string, lat, lon float64) (SearchResults, error) {
 
 	start := time.Now()
 	log = log.With(
@@ -127,7 +127,7 @@ func SearchGeo(ctx context.Context, log *zap.Logger, client Obfuscator, lat, lon
 		zap.Float64("lon", lon),
 	)
 	log.Debug("doing search using api")
-	endpoint := fmt.Sprintf("%s/api/search/geo", RecreationGovURI)
+	endpoint := fmt.Sprintf("%s/api/search/geo", baseURI)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -151,7 +151,7 @@ func SearchGeo(ctx context.Context, log *zap.Logger, client Obfuscator, lat, lon
 
 	req.URL.RawQuery = v.Encode()
 
-	res, err := client.DoSneakily(req)
+	res, err := client.Do(req)
 	if err != nil {
 		log.Error("couldn't do request", zap.Error(err))
 		return SearchResults{}, err

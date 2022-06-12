@@ -1,4 +1,4 @@
-package recreation
+package api
 
 import "time"
 

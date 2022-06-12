@@ -1,6 +1,31 @@
-package recreation
+package api
 
-import "math/rand"
+import (
+	"math/rand"
+	"net"
+	"net/http"
+	"time"
+)
+
+var (
+	client *http.Client
+)
+
+// boilerplate, cbf avoiding a global here.
+func init() {
+	client = &http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+
+}
 
 var (
 	userAgents = []string{
@@ -47,6 +72,6 @@ var (
 	}
 )
 
-func randomUserAgent() string {
+func RandomUserAgent() string {
 	return userAgents[rand.Intn(len(userAgents))]
 }
