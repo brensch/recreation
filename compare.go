@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/brensch/recreation/api"
+	"go.uber.org/zap"
 )
 
 type CampsiteDelta struct {
@@ -21,7 +22,7 @@ type CheckDelta struct {
 }
 
 // FindAvailabilityDeltas compares old and new availability and returns all deltas between the two
-func FindAvailabilityDeltas(oldGround, newGround api.Availability, groundID string, now time.Time) ([]CampsiteDelta, error) {
+func FindAvailabilityDeltas(log *zap.Logger, oldGround, newGround api.Availability, groundID string, now time.Time) ([]CampsiteDelta, error) {
 
 	var deltas []CampsiteDelta
 
@@ -38,6 +39,7 @@ func FindAvailabilityDeltas(oldGround, newGround api.Availability, groundID stri
 
 			date, err := time.Parse(time.RFC3339, dateString)
 			if err != nil {
+				log.Error("failed to parse date in availability map", zap.Error(err))
 				return nil, err
 			}
 

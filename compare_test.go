@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/brensch/recreation/api"
+	"go.uber.org/zap"
 )
 
 func TestCompareCampgroundStates(t *testing.T) {
@@ -53,7 +54,8 @@ func TestCompareCampgroundStates(t *testing.T) {
 		},
 	}
 
-	deltas, err := FindAvailabilityDeltas(old, new, "testGround", date)
+	log, _ := zap.NewDevelopment()
+	deltas, err := FindAvailabilityDeltas(log, old, new, "testGround", date)
 	if err != nil {
 		t.Log(err)
 		t.FailNow()
@@ -112,7 +114,9 @@ func BenchmarkCompareCampgroundStates(b *testing.B) {
 		},
 	}
 
+	log, _ := zap.NewDevelopment()
+
 	for i := 0; i < b.N; i++ {
-		FindAvailabilityDeltas(old, new, "test_ground", date)
+		FindAvailabilityDeltas(log, old, new, "test_ground", date)
 	}
 }
