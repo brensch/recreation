@@ -1,10 +1,10 @@
 package recreation
 
 import (
-	"net/http"
+	"context"
 	"net/http/httputil"
-	"strings"
 
+	"cloud.google.com/go/firestore"
 	"go.uber.org/zap"
 )
 
@@ -14,6 +14,7 @@ var (
 	// p     ProxyClient
 	log   *zap.Logger
 	proxy httputil.ReverseProxy
+	fs    *firestore.Client
 )
 
 func init() {
@@ -26,21 +27,15 @@ func init() {
 	logConfig.EncoderConfig.TimeKey = "time"
 	// logConfig.Encoding = "console"
 
-	proxy = httputil.ReverseProxy{
-		// Transport: roundTripper(rt),
-		Director: func(req *http.Request) {
-			target := "www.recreation.gov"
-			req.URL.Scheme = "https"
-			req.URL.Host = target
-			req.Host = target
-			req.Header["X-Forwarded-For"] = nil
-			req.Header.Set("User-Agent", "PostmanRuntime/7.29.0")
-			req.URL.Path = strings.TrimPrefix(req.URL.Path, "/HandleProxyRequest")
-		},
+	proxy = MakeProxy()
+
+	var err error
+	fs, err = InitFirestore(context.Background())
+	if err != nil {
+		panic(err)
 	}
 
 	// init logger
-	var err error
 	log, err = logConfig.Build()
 	if err != nil {
 		// this indicates a bug or some way that zap can fail i'm not aware of

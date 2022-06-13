@@ -13,6 +13,7 @@ require (
 
 require (
 	cloud.google.com/go/storage v1.22.1 // indirect
+	github.com/influxdata/influxdb-client-go/v2 v2.9.0
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 )

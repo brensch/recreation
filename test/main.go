@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/brensch/recreation"
 )
 
 func main() {
 
 	// proxy.Director = recreation.Director
 
-	http.HandleFunc("/", HelloServer)
+	// http.HandleFunc("/", HelloServer)
+	http.HandleFunc("/", recreation.HandleAvailabilitiesSync)
 
 	http.ListenAndServe(":8081", nil)
 

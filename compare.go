@@ -8,6 +8,7 @@ import (
 
 type CampsiteDelta struct {
 	SiteID       string
+	GroundID     string
 	OldState     string
 	NewState     string
 	DateAffected time.Time
@@ -19,7 +20,8 @@ type CheckDelta struct {
 	CheckTime time.Time
 }
 
-func FindAvailabilityDeltas(oldGround, newGround api.Availability) ([]CampsiteDelta, error) {
+// FindAvailabilityDeltas compares old and new availability and returns all deltas between the two
+func FindAvailabilityDeltas(oldGround, newGround api.Availability, groundID string, now time.Time) ([]CampsiteDelta, error) {
 
 	var deltas []CampsiteDelta
 
@@ -39,8 +41,14 @@ func FindAvailabilityDeltas(oldGround, newGround api.Availability) ([]CampsiteDe
 				return nil, err
 			}
 
+			// ignore dates in the past. the api reports them inconsistently, plus we're not interested in them.
+			if date.Before(now) {
+				continue
+			}
+
 			deltas = append(deltas, CampsiteDelta{
 				SiteID:       siteID,
+				GroundID:     groundID,
 				OldState:     oldSite.Availabilities[dateString],
 				NewState:     availability,
 				DateAffected: date,

@@ -2,11 +2,18 @@ package recreation
 
 import (
 	"testing"
+	"time"
 
 	"github.com/brensch/recreation/api"
 )
 
 func TestCompareCampgroundStates(t *testing.T) {
+
+	date, err := time.Parse(time.RFC3339, "2022-06-01T00:00:00Z")
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
 
 	old := api.Availability{
 		Campsites: map[string]api.Campsite{
@@ -46,16 +53,26 @@ func TestCompareCampgroundStates(t *testing.T) {
 		},
 	}
 
-	delta, err := FindAvailabilityDeltas(old, new)
+	deltas, err := FindAvailabilityDeltas(old, new, "testGround", date)
 	if err != nil {
 		t.Log(err)
 		t.FailNow()
 	}
-	t.Log(delta)
+
+	if len(deltas) != 2 {
+		t.Error("got wrong number of deltas")
+	}
+	t.Log(deltas)
 
 }
 
 func BenchmarkCompareCampgroundStates(b *testing.B) {
+
+	date, err := time.Parse(time.RFC3339, "2022-06-01T00:00:00Z")
+	if err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
 
 	old := api.Availability{
 		Campsites: map[string]api.Campsite{
@@ -96,6 +113,6 @@ func BenchmarkCompareCampgroundStates(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		FindAvailabilityDeltas(old, new)
+		FindAvailabilityDeltas(old, new, "test_ground", date)
 	}
 }
