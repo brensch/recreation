@@ -1,4 +1,4 @@
-package recreation
+package proxy
 
 import (
 	"io/ioutil"

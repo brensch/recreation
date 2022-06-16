@@ -1,9 +1,11 @@
-package recreation
+package proxy
 
 import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // from https://cloud.google.com/functions/docs/locations
@@ -40,7 +42,7 @@ import (
 // asia-northeast3 (Seoul)
 
 var (
-	proxies = []string{
+	Proxies = []string{
 		// tier 1
 		"us-west1",
 		"us-central1",
@@ -70,6 +72,32 @@ var (
 	}
 )
 
+// using globals since i'm using cloud functions and can't pass things like i would regular handler funcs
+var (
+	log   *zap.Logger
+	proxy httputil.ReverseProxy
+)
+
+func init() {
+	logConfig := zap.NewProductionConfig()
+	logConfig.Level.SetLevel(zap.DebugLevel)
+
+	// this ensures google logs pick things up properly
+	logConfig.EncoderConfig.MessageKey = "message"
+	logConfig.EncoderConfig.LevelKey = "severity"
+	logConfig.EncoderConfig.TimeKey = "time"
+
+	proxy = MakeProxy()
+
+	// init logger
+	var err error
+	log, err = logConfig.Build()
+	if err != nil {
+		// this indicates a bug or some way that zap can fail i'm not aware of
+		panic(err)
+	}
+}
+
 func MakeProxy() httputil.ReverseProxy {
 
 	return httputil.ReverseProxy{
@@ -95,3 +123,9 @@ func rt(req *http.Request) (*http.Response, error) {
 type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// HandleProxyRequest is how I'm obfuscating my IP. Any request sent to this function gets relayed to
+// recreation.gov. It is effective at avoiding the cloudflare rate limiting being imposed.
+func HandleProxyRequest(w http.ResponseWriter, r *http.Request) {
+	proxy.ServeHTTP(w, r)
+}

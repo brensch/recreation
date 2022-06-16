@@ -13,8 +13,8 @@ require (
 
 require (
 	cloud.google.com/go/storage v1.22.1 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/influxdata/influxdb-client-go/v2 v2.9.0
+	github.com/xconstruct/go-pushbullet v0.0.0-20171206132031-67759df45fbb // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	gopkg.in/yaml.v2 v2.3.0 // indirect
 )

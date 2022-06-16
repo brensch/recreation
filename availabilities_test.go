@@ -1,4 +1,4 @@
-package recreation
+package main
 
 // func TestCheckForAvailabilityChange(t *testing.T) {
 

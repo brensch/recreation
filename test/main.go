@@ -13,7 +13,7 @@ func main() {
 	// proxy.Director = recreation.Director
 
 	// http.HandleFunc("/", HelloServer)
-	http.HandleFunc("/", recreation.HandleAvailabilitiesSync)
+	http.HandleFunc("/", recreation.HandleAvailabilitySync)
 
 	http.ListenAndServe(":8081", nil)
 

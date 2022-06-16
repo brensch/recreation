@@ -1,55 +1,67 @@
-package recreation
+package main
 
-// func SubmitData() error {
+import (
+	"context"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"time"
 
-// 	token, err := ioutil.ReadFile(".influx")
-// 	if err != nil {
-// 		return err
-// 	}
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
+	"go.uber.org/zap"
+)
 
-// 	url := "https://us-central1-1.gcp.cloud2.influxdata.com"
+func SubmitData() error {
 
-// 	client := influxdb2.NewClient(url, string(token))
+	token, err := ioutil.ReadFile(".influx")
+	if err != nil {
+		return err
+	}
 
-// 	defer client.Close()
+	url := "https://us-central1-1.gcp.cloud2.influxdata.com"
 
-// 	org := "brensch@tuta.io"
-// 	bucket := "test"
-// 	writeAPI := client.WriteAPIBlocking(org, bucket)
-// 	for value := 0; value < 5; value++ {
-// 		tags := map[string]string{
-// 			"tagname1": "tagvalue1",
-// 		}
-// 		fields := map[string]interface{}{
-// 			"field1": value,
-// 		}
-// 		point := write.NewPoint("measurement1", tags, fields, time.Now())
-// 		time.Sleep(1 * time.Second) // separate points by 1 second
+	client := influxdb2.NewClient(url, string(token))
 
-// 		if err := writeAPI.WritePoint(context.Background(), point); err != nil {
-// 			log.Fatal("failed to write", zap.Error(err))
-// 		}
-// 	}
+	defer client.Close()
 
-// 	queryAPI := client.QueryAPI(org)
-// 	// query := `from(bucket: "test")
-// 	//         |> range(start: -10m)
-// 	//         |> filter(fn: (r) => r._measurement == "measurement1")`
+	org := "brensch@tuta.io"
+	bucket := "test"
+	writeAPI := client.WriteAPIBlocking(org, bucket)
+	for value := 0; value < 5; value++ {
+		tags := map[string]string{
+			"tagname1": "tagvalue1",
+		}
+		fields := map[string]interface{}{
+			"field1": value,
+		}
+		point := write.NewPoint("measurement1", tags, fields, time.Now())
+		time.Sleep(1 * time.Second) // separate points by 1 second
 
-// 	query := `from(bucket: "test")
-//               |> range(start: -10m)
-//               |> filter(fn: (r) => r._measurement == "measurement1")
-//               |> mean()`
-// 	results, err := queryAPI.Query(context.Background(), query)
-// 	if err != nil {
-// 		log.Fatal("failed to query", zap.Error(err))
-// 	}
-// 	for results.Next() {
-// 		fmt.Println(results.Record())
-// 	}
-// 	if err := results.Err(); err != nil {
-// 		log.Fatal("failed to get results", zap.Error(err))
-// 	}
+		if err := writeAPI.WritePoint(context.Background(), point); err != nil {
+			log.Fatal("failed to write", zap.Error(err))
+		}
+	}
 
-// 	return nil
-// }
+	queryAPI := client.QueryAPI(org)
+	// query := `from(bucket: "test")
+	//         |> range(start: -10m)
+	//         |> filter(fn: (r) => r._measurement == "measurement1")`
+
+	query := `from(bucket: "test")
+              |> range(start: -10m)
+              |> filter(fn: (r) => r._measurement == "measurement1")
+              |> mean()`
+	results, err := queryAPI.Query(context.Background(), query)
+	if err != nil {
+		log.Fatal("failed to query", zap.Error(err))
+	}
+	for results.Next() {
+		fmt.Println(results.Record())
+	}
+	if err := results.Err(); err != nil {
+		log.Fatal("failed to get results", zap.Error(err))
+	}
+
+	return nil
+}

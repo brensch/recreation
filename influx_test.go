@@ -1,10 +1,12 @@
-package recreation
+package main
 
-// func TestSubmitData(t *testing.T) {
+import "testing"
 
-// 	err := SubmitData()
-// 	if err != nil {
-// 		t.Error(err)
-// 	}
+func TestSubmitData(t *testing.T) {
 
-// }
+	err := SubmitData()
+	if err != nil {
+		t.Error(err)
+	}
+
+}
