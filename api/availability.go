@@ -50,10 +50,6 @@ type Campsite struct {
 func GetAvailability(ctx context.Context, log *zap.Logger, baseURI string, campgroundID string, targetTime time.Time) (Availability, error) {
 
 	start := time.Now()
-	log = log.With(
-		zap.String("campground_id", campgroundID),
-		zap.Time("target_time", targetTime),
-	)
 	log.Debug("getting availability from api")
 	endpoint := fmt.Sprintf("%s/api/camps/availability/campground/%s/month", baseURI, campgroundID)
 
@@ -83,6 +79,8 @@ func GetAvailability(ctx context.Context, log *zap.Logger, baseURI string, campg
 		log.Error("couldn't read response", zap.Error(err))
 		return Availability{}, err
 	}
+
+	// fmt.Println(string(resContents))
 
 	if res.StatusCode != http.StatusOK {
 		log.Error("got bad statuscode getting availability", zap.Int("status_code", res.StatusCode))

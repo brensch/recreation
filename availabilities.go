@@ -13,7 +13,8 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"go.uber.org/zap"
-	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/brensch/recreation/api"
 	"github.com/brensch/recreation/proxy"
@@ -32,47 +33,130 @@ type AvailabilityDetailed struct {
 	firestoreRef string // this field is only tracked internally after retrieving it
 }
 
-func GetOldAvailabilities(ctx context.Context, log *zap.Logger, fs *firestore.Client, groundID string) ([]AvailabilityDetailed, error) {
-
-	var oldAvailabilities []AvailabilityDetailed
-	// todo: if this project lasts a long time, we'll need to also filter on month
-	iter := fs.Collection(CollectionAvailability).
-		Where("ground_id", "==", groundID).
-		Documents(ctx)
-	for {
-
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Error("failed to iterate through collection", zap.Error(err))
-			return nil, err
-		}
-
-		var oldAvailability AvailabilityDetailed
-		err = doc.DataTo(&oldAvailability)
-		if err != nil {
-			log.Error("failed to cast old availability from firestore object", zap.Error(err))
-			return nil, err
-		}
-
-		// need to track the ref in case we need to update it later
-		oldAvailability.firestoreRef = doc.Ref.ID
-		oldAvailabilities = append(oldAvailabilities, oldAvailability)
-	}
-
-	return oldAvailabilities, nil
+type CompressedAvailability struct {
+	// Campsites []CampsiteAvailability
+	Availabilities []DateAvailability
 }
 
-func GetNewAvailabilities(ctx context.Context, log *zap.Logger, now time.Time, groundID string, months int) ([]AvailabilityDetailed, error) {
+type AvailabilityState int
+
+const (
+	StateUnknown AvailabilityState = iota
+	StateAvailable
+	StateNotAvailable
+	StateReserved
+	StateNotReservable
+	StateNotReservableManagement
+	StateLottery
+	StateNYR
+	StateOpen
+	StateNotAvailableCutoff
+)
+
+var (
+	StateMap = map[string]AvailabilityState{
+		"Available":                 StateAvailable,
+		"Not Available":             StateNotAvailable,
+		"Reserved":                  StateReserved,
+		"Not Reservable":            StateNotReservable,
+		"Not Reservable Management": StateNotReservableManagement,
+		"Lottery":                   StateLottery,
+		"NYR":                       StateNYR,
+		"Open":                      StateOpen,
+		"Not Available Cutoff":      StateNotAvailableCutoff,
+	}
+
+	StateStrings = []string{
+		"Unknown",
+		"Available",
+		"Not Available",
+		"Reserved",
+		"Not Reservable",
+		"Not Reservable Management",
+		"Lottery",
+		"NYR",
+		"Open",
+		"Not Available Cutoff",
+	}
+
+	// StateMapReverse = map[AvailabilityState]string{
+	// 	StateAvailable:     "Available",
+	// 	StateNotAvailable:  "Not Available",
+	// 	StateReserved:      "Reserved",
+	// 	StateNotReservable: "Not Reservable",
+	// }
+)
+
+// type CampsiteAvailability struct {
+// 	CampsiteID     string
+// 	Availabilities []DateAvailability
+// }
+
+type DateAvailability struct {
+	CampsiteID string
+	Date       time.Time
+	State      AvailabilityState
+}
+
+func CompressAvailability(log *zap.Logger, in api.Availability) []DateAvailability {
+
+	var dateAvails []DateAvailability
+	for _, campsite := range in.Campsites {
+
+		for date, state := range campsite.Availabilities {
+			dateParsed, err := time.Parse(time.RFC3339, date)
+			if err != nil {
+				fmt.Println("wodduheck")
+				continue
+			}
+
+			stateParsed, ok := StateMap[state]
+			if !ok {
+				log.Warn("got unknown state", zap.String("state", state))
+				stateParsed = StateUnknown
+			}
+
+			dateAvails = append(dateAvails, DateAvailability{
+				CampsiteID: campsite.CampsiteID,
+				Date:       dateParsed,
+				State:      stateParsed,
+			})
+		}
+	}
+
+	return dateAvails
+}
+
+func GetOldAvailabilities(ctx context.Context, log *zap.Logger, fs *firestore.Client, groundID string) (CompressedAvailability, error) {
+
+	// todo: if this project lasts a long time, we'll need to also filter on month
+	doc, err := fs.Collection(CollectionAvailability).Doc(groundID).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return CompressedAvailability{}, nil
+	}
+	if err != nil {
+		return CompressedAvailability{}, err
+	}
+
+	var oldAvailability CompressedAvailability
+	err = doc.DataTo(&oldAvailability)
+	if err != nil {
+		log.Error("failed to cast old availability from firestore object", zap.Error(err))
+		return CompressedAvailability{}, err
+	}
+
+	return oldAvailability, nil
+}
+
+func GetNewAvailabilities(ctx context.Context, log *zap.Logger, now time.Time, groundID string, months int) (CompressedAvailability, error) {
 
 	// start is used to measure duration and as the change time in the delta object
 	start := time.Now()
 
 	log.Info("started getting all new availabilities")
 
-	allNewAvails := make([]AvailabilityDetailed, months)
+	// allNewAvails := make([]AvailabilityDetailed, months)
+	var allDateAvails []DateAvailability
 
 	// allow up to five concurrent requests
 	var mu sync.Mutex
@@ -95,12 +179,12 @@ func GetNewAvailabilities(ctx context.Context, log *zap.Logger, now time.Time, g
 			defer wg.Done()
 			// write to the buffered chan. as soon as it fills up, this will become blocking until other goroutines end.
 
+			targetTime := time.Date(now.Year(), now.Month()+time.Month(i), now.Day(), 0, 0, 0, 0, time.UTC)
 			log := log.With(
 				zap.String("proxy", randRegion),
-				zap.String("ground_id", groundID),
+				zap.Time("target_time", targetTime),
 			)
 			log.Debug("checking campground availability")
-			targetTime := time.Date(now.Year(), now.Month()+time.Month(i), now.Day(), 0, 0, 0, 0, time.UTC)
 			newAvailability, err := api.GetAvailability(ctx, log, proxyURI, groundID, targetTime)
 			if err != nil {
 				// if we fail we should kill all other requests. erring on the side of caution
@@ -108,13 +192,11 @@ func GetNewAvailabilities(ctx context.Context, log *zap.Logger, now time.Time, g
 				return
 			}
 
+			dateAvails := CompressAvailability(log, newAvailability)
+
 			mu.Lock()
 			// assign directly to index make this more efficient than a slice
-			allNewAvails[i] = AvailabilityDetailed{
-				Availability: newAvailability,
-				Month:        api.GetStartOfMonth(targetTime),
-				GroundID:     groundID,
-			}
+			allDateAvails = append(allDateAvails, dateAvails...)
 			mu.Unlock()
 		}(i)
 	}
@@ -125,65 +207,112 @@ func GetNewAvailabilities(ctx context.Context, log *zap.Logger, now time.Time, g
 		zap.Duration("duration", time.Since(start)),
 	)
 
-	return allNewAvails, nil
+	return CompressedAvailability{Availabilities: allDateAvails}, nil
 }
 
-func CompareAvailabilities(log *zap.Logger, oldAvailabilities, newAvailabilities []AvailabilityDetailed, now time.Time) ([]CampsiteDelta, []AvailabilityDetailed, error) {
+// func CompareAvailabilities(log *zap.Logger, oldAvailabilities, newAvailabilities []AvailabilityDetailed, now time.Time) ([]CampsiteDelta, []AvailabilityDetailed, error) {
 
-	var allDeltas []CampsiteDelta
-	var allAvailabilitiesWithDifferences []AvailabilityDetailed
+// 	var allDeltas []CampsiteDelta
+// 	var allAvailabilitiesWithDifferences []AvailabilityDetailed
 
-	for _, newAvailability := range newAvailabilities {
-		var matchingOldAvailability api.Availability
-		var matchingOldRef string
-		for _, oldAvailability := range oldAvailabilities {
-			// skip avails that don't match
-			if newAvailability.GroundID != oldAvailability.GroundID ||
-				!newAvailability.Month.Equal(oldAvailability.Month) {
+// 	for _, newAvailability := range newAvailabilities {
+// 		var matchingOldAvailability api.Availability
+// 		var matchingOldRef string
+// 		for _, oldAvailability := range oldAvailabilities {
+// 			// skip avails that don't match
+// 			if newAvailability.GroundID != oldAvailability.GroundID ||
+// 				!newAvailability.Month.Equal(oldAvailability.Month) {
+// 				continue
+// 			}
+// 			// save the one old availability if we find a match
+// 			matchingOldAvailability = oldAvailability.Availability
+// 			matchingOldRef = oldAvailability.firestoreRef
+
+// 			break
+
+// 		}
+
+// 		// if we did not find the old availability, we should compare it to a nil object anyway.
+// 		deltas, err := FindAvailabilityDeltas(log, matchingOldAvailability, newAvailability.Availability, newAvailability.GroundID, now)
+// 		if err != nil {
+// 			return nil, nil, err
+// 		}
+
+// 		// don't do anything if no differences
+// 		if len(deltas) == 0 {
+// 			continue
+// 		}
+
+// 		// if there are differences, record them
+// 		allDeltas = append(allDeltas, deltas...)
+// 		// the newAvailability object needs the ref from the oldAvailability
+// 		newAvailability.firestoreRef = matchingOldRef
+// 		allAvailabilitiesWithDifferences = append(allAvailabilitiesWithDifferences, newAvailability)
+// 	}
+
+// 	return allDeltas, allAvailabilitiesWithDifferences, nil
+// }
+
+func CompareAvailabilities2(log *zap.Logger, groundID string, oldAvailabilities, newAvailabilities CompressedAvailability, now time.Time) ([]CampsiteDelta2, error) {
+
+	var deltas []CampsiteDelta2
+	for _, newAvail := range newAvailabilities.Availabilities {
+
+		// we don't want to count things in the past, api gets screwy with what it returns
+		if newAvail.Date.Before(now) {
+			continue
+		}
+
+		newAvailFound := false
+		newAvailDiff := false
+		oldState := StateUnknown
+		for _, oldAvail := range oldAvailabilities.Availabilities {
+			if oldAvail.CampsiteID != newAvail.CampsiteID ||
+				oldAvail.Date != newAvail.Date {
 				continue
 			}
-			// save the one old availability if we find a match
-			matchingOldAvailability = oldAvailability.Availability
-			matchingOldRef = oldAvailability.firestoreRef
 
+			newAvailFound = true
+
+			if oldAvail.State != newAvail.State {
+				newAvailDiff = true
+			}
 			break
 
 		}
 
-		// if we did not find the old availability, we should compare it to a nil object anyway.
-		deltas, err := FindAvailabilityDeltas(log, matchingOldAvailability, newAvailability.Availability, newAvailability.GroundID, now)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// don't do anything if no differences
-		if len(deltas) == 0 {
+		// don't do anything if it existed and wasn't different
+		if newAvailFound && !newAvailDiff {
 			continue
 		}
 
-		// if there are differences, record them
-		allDeltas = append(allDeltas, deltas...)
-		// the newAvailability object needs the ref from the oldAvailability
-		newAvailability.firestoreRef = matchingOldRef
-		allAvailabilitiesWithDifferences = append(allAvailabilitiesWithDifferences, newAvailability)
+		deltas = append(deltas, CampsiteDelta2{
+			SiteID:       newAvail.CampsiteID,
+			GroundID:     groundID,
+			OldState:     oldState,
+			NewState:     newAvail.State,
+			DateAffected: newAvail.Date,
+		})
 	}
+	log.Info("finished comparing")
 
-	return allDeltas, allAvailabilitiesWithDifferences, nil
+	return deltas, nil
 }
 
-func GetAvailabilityDeltas(ctx context.Context, log *zap.Logger, fs *firestore.Client, now time.Time, groundID string) ([]CampsiteDelta, []AvailabilityDetailed, error) {
+func GetAvailabilityDeltas(ctx context.Context, log *zap.Logger, fs *firestore.Client, now time.Time, groundID string) (CompressedAvailability, []CampsiteDelta2, error) {
 
 	oldAvails, err := GetOldAvailabilities(ctx, log, fs, groundID)
 	if err != nil {
-		return nil, nil, err
+		return CompressedAvailability{}, nil, err
 	}
 
 	newAvails, err := GetNewAvailabilities(ctx, log, now, groundID, 3)
 	if err != nil {
-		return nil, nil, err
+		return CompressedAvailability{}, nil, err
 	}
 
-	return CompareAvailabilities(log, oldAvails, newAvails, now)
+	deltas, err := CompareAvailabilities2(log, groundID, oldAvails, newAvails, now)
+	return newAvails, deltas, err
 }
 
 // needs to do all three at a campground and then ship to firestore and remove from memory
@@ -196,7 +325,7 @@ func DoAvailabilitySync(ctx context.Context, log *zap.Logger, fs *firestore.Clie
 		zap.String("ground_id", groundID),
 	)
 
-	deltas, avails, err := GetAvailabilityDeltas(ctx, log, fs, now, groundID)
+	avails, deltas, err := GetAvailabilityDeltas(ctx, log, fs, now, groundID)
 	if err != nil {
 		return err
 	}
@@ -211,7 +340,12 @@ func DoAvailabilitySync(ctx context.Context, log *zap.Logger, fs *firestore.Clie
 		return err
 	}
 
-	err = UpdateNewAvails(ctx, log, fs, avails)
+	err = NotifyOfDeltas(ctx, log, fs, deltas)
+	if err != nil {
+		return err
+	}
+
+	err = UpdateNewAvails(ctx, log, fs, avails, groundID)
 	if err != nil {
 		return err
 	}
@@ -219,7 +353,6 @@ func DoAvailabilitySync(ctx context.Context, log *zap.Logger, fs *firestore.Clie
 	log.Info("completed availability sync for site",
 		zap.Duration("duration", time.Since(start)),
 		zap.Int("deltas", len(deltas)),
-		zap.Int("grounds_updated", len(avails)),
 	)
 
 	return nil
@@ -437,24 +570,18 @@ func GetAvailabilityRef(groundID string, targetTime time.Time) string {
 
 // }
 
-func UpdateNewAvails(ctx context.Context, log *zap.Logger, fs *firestore.Client, newAvailabilities []AvailabilityDetailed) error {
+func UpdateNewAvails(ctx context.Context, log *zap.Logger, fs *firestore.Client, newAvailability CompressedAvailability, groundID string) error {
 	start := time.Now()
 
-	for _, avail := range newAvailabilities {
-		doc := fs.Collection(CollectionAvailability).NewDoc()
-		// only set the ref to the previous one if it actually found an old doc to override
-		if avail.firestoreRef != "" {
-			doc = fs.Collection(CollectionAvailability).Doc(avail.firestoreRef)
-		}
+	doc := fs.Collection(CollectionAvailability).Doc(groundID)
+	// only set the ref to the previous one if it actually found an old doc to override
 
-		_, err := doc.Set(ctx, avail)
-		if err != nil {
-			log.Error("failed to write new avail to firestore", zap.Error(err))
-			return err
-		}
-		log.Debug("updated availability", zap.String("firestore_document", doc.ID))
-
+	_, err := doc.Set(ctx, newAvailability)
+	if err != nil {
+		log.Error("failed to write new avail to firestore", zap.Error(err), zap.Int("count_avails", len(newAvailability.Availabilities)))
+		return err
 	}
+	log.Debug("updated availability", zap.String("firestore_document", doc.ID))
 
 	log.Info("completed updating availabilities", zap.Duration("duration", time.Since(start)))
 	return nil
@@ -498,24 +625,19 @@ func UpdateNewAvails(ctx context.Context, log *zap.Logger, fs *firestore.Client,
 // add all deltas to the same document since campsites are globally unique so cheaper for consumers to grab the whole
 // document and search through for campsites you want.
 // breaking it up into chunks of 500 sites to avoid max document size limit
-func UpdateNewDeltas2(ctx context.Context, log *zap.Logger, ifdb influxdb2.Client, newDeltas []CampsiteDelta, now time.Time) error {
+func UpdateNewDeltas2(ctx context.Context, log *zap.Logger, ifdb influxdb2.Client, newDeltas []CampsiteDelta2, now time.Time) error {
+
+	log.Info("started updating deltas")
 	start := time.Now()
 	org := "brensch@tuta.io"
+	// org := "my-org"
 	bucket := "availability"
 	writeAPI := ifdb.WriteAPI(org, bucket)
 	defer writeAPI.Flush()
 
 	// writeAPI.
-	newStateFields := make(map[string]int)
-	oldStateFields := make(map[string]int)
-
-	if len(newDeltas) == 0 {
-		return fmt.Errorf("deltas are length 0")
-	}
-	groundID := newDeltas[0].GroundID
-	tags := map[string]string{
-		"ground": groundID,
-	}
+	newStateFields := make(map[AvailabilityState]int)
+	oldStateFields := make(map[AvailabilityState]int)
 
 	for _, delta := range newDeltas {
 
@@ -523,7 +645,7 @@ func UpdateNewDeltas2(ctx context.Context, log *zap.Logger, ifdb influxdb2.Clien
 		oldStateFields[delta.OldState] += 1
 
 		available := 0
-		if delta.NewState == "Available" {
+		if delta.NewState == StateAvailable {
 			available = 1
 		}
 
@@ -554,24 +676,44 @@ func UpdateNewDeltas2(ctx context.Context, log *zap.Logger, ifdb influxdb2.Clien
 
 	}
 
-	newStateFieldsI := make(map[string]interface{})
-	oldStateFieldsI := make(map[string]interface{})
+	// if len(newDeltas) == 0 {
+	// 	return fmt.Errorf("deltas are length 0")
+	// }
+	// groundID := newDeltas[0].GroundID
 
-	for key, value := range newStateFields {
-		if key == "" {
-			key = "unset"
-		}
-		newStateFieldsI[key] = value
-	}
-	for key, value := range oldStateFields {
-		if key == "" {
-			key = "unset"
-		}
-		oldStateFieldsI[key] = value
-	}
+	// tags := map[string]string{
+	// 	"ground": groundID,
+	// }
 
-	writeAPI.WritePoint(write.NewPoint("delta_sums_new_state", tags, newStateFieldsI, now))
-	writeAPI.WritePoint(write.NewPoint("delta_sums_old_state", tags, oldStateFieldsI, now))
+	// newStateFieldsI := make(map[string]interface{})
+	// oldStateFieldsI := make(map[string]interface{})
+
+	// for key, value := range newStateFields {
+	// 	// if key == StateUnknown {
+	// 	// 	key = StateUnknown
+	// 	// }
+	// 	state, ok := StateMapReverse[key]
+	// 	if !ok {
+	// 		fmt.Println("odd: ", key)
+	// 		continue
+	// 	}
+	// 	newStateFieldsI[state] = value
+	// }
+	// for key, value := range oldStateFields {
+	// 	// if key == StateUnknown {
+	// 	// 	key = StateUnknown
+	// 	// }
+	// 	state, ok := StateMapReverse[key]
+	// 	if !ok {
+	// 		fmt.Println("odd: ", key)
+	// 		continue
+	// 	}
+	// 	oldStateFieldsI[state] = value
+	// }
+	// log.Info("thinging")
+
+	// writeAPI.WritePoint(write.NewPoint("delta_sums_new_state", tags, newStateFieldsI, now))
+	// writeAPI.WritePoint(write.NewPoint("delta_sums_old_state", tags, oldStateFieldsI, now))
 
 	log.Info("completed updating deltas", zap.Duration("duration", time.Since(start)))
 	return nil

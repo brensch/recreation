@@ -15,6 +15,14 @@ type CampsiteDelta struct {
 	DateAffected time.Time
 }
 
+type CampsiteDelta2 struct {
+	SiteID       string
+	GroundID     string
+	OldState     AvailabilityState
+	NewState     AvailabilityState
+	DateAffected time.Time
+}
+
 type CheckDelta struct {
 	// GroundID  string
 	Deltas    []CampsiteDelta

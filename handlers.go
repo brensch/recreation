@@ -13,8 +13,9 @@ import (
 
 func HandleAvailabilitySync(log *zap.Logger, fs *firestore.Client, ifdb influxdb2.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Info("yo")
 
-		concurrentCHAN := make(chan struct{}, 4)
+		concurrentCHAN := make(chan struct{}, 3)
 		var wg sync.WaitGroup
 
 		ctx, cancel := context.WithCancel(r.Context())
@@ -22,16 +23,17 @@ func HandleAvailabilitySync(log *zap.Logger, fs *firestore.Client, ifdb influxdb
 
 		now := time.Now()
 		for _, groundID := range campgroundIDs {
-			time.Sleep(100 * time.Millisecond)
+			// time.Sleep(100 * time.Millisecond)
 
 			wg.Add(1)
 			go func(groundID string) {
+				defer wg.Done()
 				concurrentCHAN <- struct{}{}
 				defer func() { <-concurrentCHAN }()
-				defer wg.Done()
 				err := DoAvailabilitySync(ctx, log, fs, ifdb, now, groundID)
 				if err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
+					log.Error("problem with avail sync", zap.Error(err))
+					// w.WriteHeader(http.StatusInternalServerError)
 					cancel()
 					return
 				}
